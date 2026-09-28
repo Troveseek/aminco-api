@@ -54,13 +54,13 @@ async def startup():
         await conn.run_sync(Base.metadata.create_all)
 
     # Ensure the default admin user exists
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.database import AsyncSessionLocal
     from sqlalchemy import select
     from app.models import AdminUser, Setting
     from app.auth import hash_password
     from datetime import datetime
 
-    async with AsyncSession(engine) as session:
+    async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(AdminUser).where(AdminUser.email == ADMIN_EMAIL)
         )
