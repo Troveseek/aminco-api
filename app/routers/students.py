@@ -2,13 +2,11 @@
 Student-facing routes: register, login, me (get/patch/photo), QR code.
 """
 import re
-from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from app import models, schemas
 from app.auth import (
@@ -21,13 +19,6 @@ from app.storage import upload_image
 from app.qr import generate_verify_qr_png
 
 router = APIRouter(prefix="/api/students", tags=["students"])
-
-UNIVERSITIES = [
-    "جامعة فرحات عباس - سطيف",
-    "جامعة محمد لمين دباغين - سطيف 2",
-    "المدرسة العليا للتكنولوجيا - سطيف",
-    "جامعة أخرى",
-]
 
 
 def _make_referral_code(name: str, student_id: int) -> str:
@@ -51,6 +42,20 @@ async def register(body: schemas.StudentRegister, db: AsyncSession = Depends(get
 
 
 
+    # Check for valid referral code if provided
+    referred_by_id = None
+    if body.referred_by_code:
+        # Find the referral code owner
+        ref_owner = await db.execute(
+            select(models.Student).where(models.Student.referral_code == body.referred_by_code.strip())
+        )
+        owner = ref_owner.scalar_one_or_none()
+        if owner:
+            referred_by_id = owner.id
+        else:
+            # Optionally throw an error, but usually we just ignore invalid codes
+            pass
+
     # Create student (referral_code is a placeholder until we have the real id)
     student = models.Student(
         name=body.name,
@@ -59,7 +64,7 @@ async def register(body: schemas.StudentRegister, db: AsyncSession = Depends(get
         password_hash=hash_password(body.password),
         photo_url=None,
         subscription_status="none",
-        referred_by=None,
+        referred_by=referred_by_id,
         referral_code="TEMP",   # will update after flush gives us the id
     )
     db.add(student)

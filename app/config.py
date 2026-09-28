@@ -19,7 +19,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1008
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@amenco-club.dz")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "AmencoAdmin2026!")
 
-APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
+APP_BASE_URL = os.getenv("APP_BASE_URL", "https://amenco-club.netlify.app")
 SUBSCRIPTION_PRICE_DZD = int(os.getenv("SUBSCRIPTION_PRICE_DZD", "1000"))
 SUBSCRIPTION_DURATION_YEARS = int(os.getenv("SUBSCRIPTION_DURATION_YEARS", "1"))
 

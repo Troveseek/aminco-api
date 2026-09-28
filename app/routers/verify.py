@@ -37,6 +37,7 @@ async def verify_student(student_id: int, db: AsyncSession = Depends(get_db)):
         student_id=student.id,
         name=student.name,
         university=student.university,
+        phone=student.phone,
         photo_url=student.photo_url,
         subscription_status=student.subscription_status,
         subscription_end=student.subscription_end,

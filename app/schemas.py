@@ -68,6 +68,7 @@ class StudentRegister(BaseModel):
     phone: str
     university: str
     password: str
+    referred_by_code: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -348,6 +349,7 @@ class VerifyOut(BaseModel):
     student_id: int
     name: str
     university: str
+    phone: Optional[str] = None
     photo_url: Optional[str] = None
     subscription_status: str
     subscription_end: Optional[datetime] = None

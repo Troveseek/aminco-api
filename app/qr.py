@@ -12,12 +12,9 @@ from app.config import APP_BASE_URL
 def generate_verify_qr_png(student_id: int) -> bytes:
     """
     Returns a PNG image (as bytes) containing a real, scannable QR code
-    that encodes: https://<APP_BASE_URL>/verify/<student_id>
-
-    The vendor scans this → opens the URL → backend returns live membership
-    validity without requiring the vendor to have any app or login.
+    that encodes: https://amenco-club.netlify.app/verify.html?id=<student_id>
     """
-    verify_url = f"{APP_BASE_URL}/verify/{student_id}"
+    verify_url = f"https://amenco-club.netlify.app/verify.html?id={student_id}"
 
     qr = qrcode.QRCode(
         version=None,          # auto-size

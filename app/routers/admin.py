@@ -235,7 +235,10 @@ async def approve_payment(
             ref_entry = ref_row.scalar_one_or_none()
             if ref_entry:
                 ref_entry.usage_count += 1
-                ref_entry.reward_amount += 200
+                if referrer.is_ambassador:
+                    ref_entry.reward_amount += 500
+                else:
+                    ref_entry.reward_amount += 200
 
     await db.commit()
     await db.refresh(payment)
