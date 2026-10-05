@@ -35,6 +35,7 @@ app.include_router(students.router)
 app.include_router(offers.router)
 app.include_router(payments.router)
 app.include_router(verify.router)
+app.include_router(verify.router, prefix="/api")
 app.include_router(admin.router)
 app.include_router(categories.router)
 
@@ -52,6 +53,17 @@ async def startup():
     # For local dev and initial Supabase setup, create_all is convenient.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Safe migration for new vendor columns if table already existed
+        for col, col_type in [
+            ("instagram_url", "VARCHAR(255)"),
+            ("tiktok_url", "VARCHAR(255)"),
+            ("location_url", "TEXT"),
+        ]:
+            try:
+                from sqlalchemy import text
+                await conn.execute(text(f"ALTER TABLE vendors ADD COLUMN {col} {col_type}"))
+            except Exception:
+                pass
 
     # Ensure the default admin user exists
     from app.database import AsyncSessionLocal
@@ -103,6 +115,20 @@ async def startup():
             await session.commit()
             print("✅ Default categories created")
 
+        # Seed universities
+        from app.models import University
+        uni_result = await session.execute(select(University).limit(1))
+        if not uni_result.scalar_one_or_none():
+            default_unis = [
+                University(name="جامعة فرحات عباس - سطيف 1"),
+                University(name="جامعة محمد لمين دباغين - سطيف 2"),
+                University(name="الجامعة المركزية"),
+                University(name="المدرسة العليا للأساتذة")
+            ]
+            session.add_all(default_unis)
+            await session.commit()
+            print("✅ Default universities created in database")
+
 
 # ── Health check ─────────────────────────────────────────────
 
@@ -121,7 +147,19 @@ async def root():
 
 
 @app.get("/api/universities")
+@app.get("/universities")
 async def get_universities():
+    from app.database import AsyncSessionLocal
+    from app.models import University
+    from sqlalchemy import select
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(University).order_by(University.id))
+            unis = result.scalars().all()
+            if unis:
+                return [u.name for u in unis]
+    except Exception as e:
+        print("Database error in get_universities fallback:", e)
     return [
         "جامعة فرحات عباس - سطيف 1",
         "جامعة محمد لمين دباغين - سطيف 2",

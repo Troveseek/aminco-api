@@ -23,6 +23,14 @@ class Category(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
+class University(Base):
+    __tablename__ = "universities"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    name       = Column(String(255), nullable=False, unique=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class AdminUser(Base):
     __tablename__ = "admin_users"
 
@@ -70,11 +78,14 @@ class Vendor(Base):
     id          = Column(Integer, primary_key=True, autoincrement=True)
     name        = Column(String(255), nullable=False)
     category    = Column(String(100), nullable=False)
-    phone       = Column(String(20), nullable=True)
-    address     = Column(Text, nullable=True)
-    description = Column(Text, nullable=True)
-    active      = Column(Boolean, nullable=False, default=True)
-    created_at  = Column(DateTime, nullable=False, default=datetime.utcnow)
+    phone         = Column(String(20), nullable=True)
+    address       = Column(Text, nullable=True)
+    description   = Column(Text, nullable=True)
+    instagram_url = Column(String(255), nullable=True)
+    tiktok_url    = Column(String(255), nullable=True)
+    location_url  = Column(Text, nullable=True)
+    active        = Column(Boolean, nullable=False, default=True)
+    created_at    = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     offers = relationship("Offer", back_populates="vendor", cascade="all, delete-orphan")
 

@@ -14,6 +14,7 @@ router = APIRouter(tags=["verify"])
 
 
 @router.get("/verify/{student_id}", response_model=schemas.VerifyOut)
+@router.get("/api/verify/{student_id}", response_model=schemas.VerifyOut)
 async def verify_student(student_id: int, db: AsyncSession = Depends(get_db)):
     """
     Public endpoint — no authentication needed.
@@ -27,10 +28,10 @@ async def verify_student(student_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
     now = datetime.utcnow()
+    # A confirmed member is valid if subscription_status is 'active' and (end date is in future or not set)
     is_valid = (
         student.subscription_status == "active"
-        and student.subscription_end is not None
-        and student.subscription_end > now
+        and (student.subscription_end is None or student.subscription_end > now)
     )
 
     return schemas.VerifyOut(

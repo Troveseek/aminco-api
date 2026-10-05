@@ -102,6 +102,40 @@ class StudentRegister(BaseModel):
         return v
 
 
+class StudentAdminCreate(BaseModel):
+    name: str
+    phone: str
+    university: str
+    password: str
+    is_ambassador: bool = False
+    plan_amount: int = 2000
+    activate_now: bool = True
+    note: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def name_min_length(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 3:
+            raise ValueError("الاسم يجب أن يكون 3 أحرف على الأقل")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def phone_format(cls, v: str) -> str:
+        v = v.strip().replace(" ", "")
+        if not ALGERIA_PHONE_RE.match(v):
+            raise ValueError("رقم الهاتف غير صحيح — مثال صحيح: 0555123456")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_length(cls, v: str) -> str:
+        if len(v) < 4:
+            raise ValueError("كلمة المرور يجب أن تكون 4 أحرف على الأقل")
+        return v
+
+
 class StudentLogin(BaseModel):
     phone: str
     password: str
@@ -158,6 +192,9 @@ class VendorCreate(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     description: Optional[str] = None
+    instagram_url: Optional[str] = None
+    tiktok_url: Optional[str] = None
+    location_url: Optional[str] = None
     active: bool = True
 
     @field_validator("name")
@@ -175,6 +212,9 @@ class VendorUpdate(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     description: Optional[str] = None
+    instagram_url: Optional[str] = None
+    tiktok_url: Optional[str] = None
+    location_url: Optional[str] = None
     active: Optional[bool] = None
 
 
@@ -185,6 +225,9 @@ class VendorOut(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     description: Optional[str] = None
+    instagram_url: Optional[str] = None
+    tiktok_url: Optional[str] = None
+    location_url: Optional[str] = None
     active: bool
     created_at: datetime
     offers_count: int = 0
@@ -239,6 +282,10 @@ class OfferOut(BaseModel):
     vendor_id: int
     vendor_name: str = ""
     vendor_address: Optional[str] = None
+    vendor_phone: Optional[str] = None
+    vendor_instagram: Optional[str] = None
+    vendor_tiktok: Optional[str] = None
+    vendor_location: Optional[str] = None
     title: str
     category: str
     discount_pct: int
@@ -285,6 +332,11 @@ class RejectPaymentIn(BaseModel):
         if not v:
             raise ValueError("سبب الرفض مطلوب")
         return v
+
+
+class CashPaymentIn(BaseModel):
+    amount: int = 2000
+    referral_code: Optional[str] = None
 
 
 # ──────────────────────────────────────────────

@@ -111,22 +111,48 @@ async def get_student(
 
 @router.post("/students", response_model=schemas.StudentAdminOut, status_code=201)
 async def add_student(
-    body: schemas.StudentRegister,
+    body: schemas.StudentAdminCreate,
     admin: models.AdminUser = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    existing = await db.execute(select(models.Student).where(models.Student.phone == body.phone))
+    clean_phone = body.phone.strip().replace(" ", "")
+    existing = await db.execute(select(models.Student).where(models.Student.phone == clean_phone))
     if existing.scalar_one_or_none():
         raise HTTPException(409, detail="رقم الهاتف مسجل مسبقاً")
+
+    now = datetime.utcnow()
     student = models.Student(
-        name=body.name, phone=body.phone, university=body.university,
+        name=body.name.strip(),
+        phone=clean_phone,
+        university=body.university.strip(),
         password_hash=hash_password(body.password or "123456"),
         referral_code="TEMP",
+        is_ambassador=body.is_ambassador,
     )
+    if body.activate_now:
+        student.subscription_status = "active"
+        student.subscription_start = now
+        student.subscription_end = now + timedelta(days=365)
+    else:
+        student.subscription_status = "none"
+
     db.add(student)
     await db.flush()
     student.referral_code = f"AM{body.name[:4].upper()}{student.id:04d}".replace(" ", "")
     db.add(models.Referral(student_id=student.id, code=student.referral_code))
+
+    if body.activate_now:
+        pay = models.Payment(
+            student_id=student.id,
+            amount=body.plan_amount or 2000,
+            receipt_image_url="CASH",
+            status="approved",
+            submitted_at=now,
+            reviewed_at=now,
+            reviewed_by=admin.id,
+        )
+        db.add(pay)
+
     await db.commit()
     await db.refresh(student)
     return schemas.StudentAdminOut.model_validate(student)
@@ -375,6 +401,10 @@ async def admin_list_offers(
         d = schemas.OfferOut.model_validate(o)
         d.vendor_name = o.vendor.name if o.vendor else ""
         d.vendor_address = o.vendor.address if o.vendor else ""
+        d.vendor_phone = o.vendor.phone if o.vendor else None
+        d.vendor_instagram = o.vendor.instagram_url if o.vendor else None
+        d.vendor_tiktok = o.vendor.tiktok_url if o.vendor else None
+        d.vendor_location = o.vendor.location_url if o.vendor else None
         out.append(d)
     return out
 
@@ -397,6 +427,10 @@ async def add_offer(
     d = schemas.OfferOut.model_validate(offer)
     d.vendor_name = vendor.name
     d.vendor_address = vendor.address
+    d.vendor_phone = vendor.phone
+    d.vendor_instagram = vendor.instagram_url
+    d.vendor_tiktok = vendor.tiktok_url
+    d.vendor_location = vendor.location_url
     return d
 
 
@@ -440,6 +474,10 @@ async def update_offer(
     d = schemas.OfferOut.model_validate(offer)
     d.vendor_name = offer.vendor.name if offer.vendor else ""
     d.vendor_address = offer.vendor.address if offer.vendor else ""
+    d.vendor_phone = offer.vendor.phone if offer.vendor else None
+    d.vendor_instagram = offer.vendor.instagram_url if offer.vendor else None
+    d.vendor_tiktok = offer.vendor.tiktok_url if offer.vendor else None
+    d.vendor_location = offer.vendor.location_url if offer.vendor else None
     return d
 
 

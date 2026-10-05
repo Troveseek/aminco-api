@@ -7,28 +7,38 @@ import os
 import uuid
 import aiofiles
 from pathlib import Path
-from supabase import create_client, Client
+try:
+    from supabase import create_client, Client
+except ImportError:
+    create_client = None
+    Client = None
+
 from app.config import (
     SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_STORAGE_BUCKET, STORAGE_BACKEND, APP_BASE_URL,
     CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
 )
-import cloudinary
-import cloudinary.uploader
-import cloudinary.api
 
-if CLOUDINARY_CLOUD_NAME:
-    cloudinary.config(
-        cloud_name=CLOUDINARY_CLOUD_NAME,
-        api_key=CLOUDINARY_API_KEY,
-        api_secret=CLOUDINARY_API_SECRET
-    )
+try:
+    import cloudinary
+    import cloudinary.uploader
+    import cloudinary.api
+    if CLOUDINARY_CLOUD_NAME:
+        cloudinary.config(
+            cloud_name=CLOUDINARY_CLOUD_NAME,
+            api_key=CLOUDINARY_API_KEY,
+            api_secret=CLOUDINARY_API_SECRET
+        )
+except ImportError:
+    cloudinary = None
 
 # Local uploads directory (used when STORAGE_BACKEND=local)
 LOCAL_UPLOAD_DIR = Path(__file__).parent.parent / "uploads"
 
 
 def _get_supabase_client() -> Client:
+    if create_client is None:
+        raise RuntimeError("supabase package is not installed. Run 'pip install supabase'.")
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 

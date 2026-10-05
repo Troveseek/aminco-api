@@ -94,3 +94,39 @@ async def my_payments(
         row.student_phone = student.phone
         out.append(row)
     return out
+
+
+# ── POST /api/payments/cash ───────────────────────────────────
+
+@router.post("/cash", response_model=schemas.PaymentOut, status_code=201)
+async def submit_cash_payment(
+    body: schemas.CashPaymentIn,
+    student: models.Student = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    if student.subscription_status == "active":
+        raise HTTPException(status_code=400, detail="اشتراكك نشط بالفعل")
+    if student.subscription_status == "pending":
+        raise HTTPException(
+            status_code=400,
+            detail="لديك طلب اشتراك قيد المراجعة بالفعل — يرجى انتظار التحقق أو زيارة المقر"
+        )
+
+    payment = models.Payment(
+        student_id=student.id,
+        amount=body.amount or 2000,
+        receipt_image_url="CASH",
+        status="pending",
+        referral_code=body.referral_code,
+    )
+    db.add(payment)
+
+    student.subscription_status = "pending"
+    await db.commit()
+    await db.refresh(payment)
+    await db.refresh(student)
+
+    out = schemas.PaymentOut.model_validate(payment)
+    out.student_name = student.name
+    out.student_phone = student.phone
+    return out

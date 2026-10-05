@@ -6,18 +6,27 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from typing import AsyncGenerator
 from app.config import DATABASE_URL
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,           # Set to True during development if you want SQL logging
-    pool_size=5,
-    max_overflow=10,
-    pool_pre_ping=True,   # Reconnect on dropped connections
-    connect_args={
-        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4().hex}__",
-        "prepared_statement_cache_size": 0,
-        "statement_cache_size": 0,
-    },
-)
+is_sqlite = DATABASE_URL.startswith("sqlite")
+
+engine_kwargs = {
+    "echo": False,
+    "pool_pre_ping": True,
+}
+
+if not is_sqlite:
+    engine_kwargs.update({
+        "pool_size": 5,
+        "max_overflow": 10,
+        "connect_args": {
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4().hex}__",
+            "prepared_statement_cache_size": 0,
+            "statement_cache_size": 0,
+        }
+    })
+else:
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
 AsyncSessionLocal = async_sessionmaker(
     engine,

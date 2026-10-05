@@ -55,6 +55,10 @@ async def list_offers(
         d = schemas.OfferOut.model_validate(o)
         d.vendor_name = o.vendor.name if o.vendor else ""
         d.vendor_address = o.vendor.address if o.vendor else ""
+        d.vendor_phone = o.vendor.phone if o.vendor else None
+        d.vendor_instagram = o.vendor.instagram_url if o.vendor else None
+        d.vendor_tiktok = o.vendor.tiktok_url if o.vendor else None
+        d.vendor_location = o.vendor.location_url if o.vendor else None
         d.is_favorited = o.id in fav_ids
         out.append(d)
     return out
@@ -87,6 +91,10 @@ async def get_offer(
     d = schemas.OfferOut.model_validate(o)
     d.vendor_name = o.vendor.name if o.vendor else ""
     d.vendor_address = o.vendor.address if o.vendor else ""
+    d.vendor_phone = o.vendor.phone if o.vendor else None
+    d.vendor_instagram = o.vendor.instagram_url if o.vendor else None
+    d.vendor_tiktok = o.vendor.tiktok_url if o.vendor else None
+    d.vendor_location = o.vendor.location_url if o.vendor else None
     d.is_favorited = o.id in fav_ids
     return d
 
@@ -156,6 +164,10 @@ async def list_favorites(
         d = schemas.OfferOut.model_validate(o)
         d.vendor_name = o.vendor.name if o.vendor else ""
         d.vendor_address = o.vendor.address if o.vendor else ""
+        d.vendor_phone = o.vendor.phone if o.vendor else None
+        d.vendor_instagram = o.vendor.instagram_url if o.vendor else None
+        d.vendor_tiktok = o.vendor.tiktok_url if o.vendor else None
+        d.vendor_location = o.vendor.location_url if o.vendor else None
         d.is_favorited = True
         out.append(d)
     return out
