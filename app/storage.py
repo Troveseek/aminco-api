@@ -77,4 +77,7 @@ async def upload_image(data: bytes, content_type: str, folder: str = "general") 
             await f.write(data)
         # Return a URL relative to the backend server
         rel = str(file_path.relative_to(LOCAL_UPLOAD_DIR.parent)).replace("\\", "/")
-        return f"{APP_BASE_URL}/{rel}"
+        base = (APP_BASE_URL or "").rstrip("/")
+        if not base or "netlify.app" in base:
+            base = "http://127.0.0.1:8000"
+        return f"{base}/{rel}"

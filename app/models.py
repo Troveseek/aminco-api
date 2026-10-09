@@ -78,6 +78,7 @@ class Vendor(Base):
     id          = Column(Integer, primary_key=True, autoincrement=True)
     name        = Column(String(255), nullable=False)
     category    = Column(String(100), nullable=False)
+    logo_url      = Column(Text, nullable=True)
     phone         = Column(String(20), nullable=True)
     address       = Column(Text, nullable=True)
     description   = Column(Text, nullable=True)
@@ -156,6 +157,7 @@ class Referral(Base):
     code          = Column(String(20), nullable=False)
     usage_count   = Column(Integer, nullable=False, default=0)
     reward_amount = Column(Integer, nullable=False, default=0)
+    settled_amount= Column(Integer, nullable=False, default=0)
     reward_status = Column(String(20), nullable=False, default="pending")
     created_at    = Column(DateTime, nullable=False, default=datetime.utcnow)
 
@@ -174,6 +176,7 @@ class Setting(Base):
 
     id                 = Column(Integer, primary_key=True, autoincrement=True)
     baridimob_account  = Column(String(50), nullable=False, default="0799 12 34 56")
+    ccp_account        = Column(String(100), nullable=True, default="")
     account_holder     = Column(String(255), nullable=False, default="")
     payment_note       = Column(Text, nullable=True)
     subscription_price = Column(Integer, nullable=False, default=1000)

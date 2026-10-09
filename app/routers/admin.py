@@ -248,23 +248,50 @@ async def approve_payment(
     student.subscription_start = now
     student.subscription_end = now + timedelta(days=365)
 
-    # Process referral reward if payment has a referral code
-    if payment.referral_code:
+    # Process referral reward (10% of payment amount: 200 DZD for 2000 DZD offer, 500 DZD for 5000 DZD offer)
+    ref_code = payment.referral_code.strip() if payment.referral_code else None
+    referrer = None
+    if ref_code:
         ref_result = await db.execute(
-            select(models.Student).where(models.Student.referral_code == payment.referral_code)
+            select(models.Student).where(func.lower(func.trim(models.Student.referral_code)) == ref_code.lower())
         )
         referrer = ref_result.scalar_one_or_none()
-        if referrer:
-            ref_row = await db.execute(
-                select(models.Referral).where(models.Referral.student_id == referrer.id)
+        if not referrer:
+            ref_match = await db.execute(
+                select(models.Referral).where(func.lower(func.trim(models.Referral.code)) == ref_code.lower())
             )
-            ref_entry = ref_row.scalar_one_or_none()
-            if ref_entry:
-                ref_entry.usage_count += 1
-                if referrer.is_ambassador:
-                    ref_entry.reward_amount += 500
-                else:
-                    ref_entry.reward_amount += 200
+            r_obj = ref_match.scalar_one_or_none()
+            if r_obj:
+                s_res = await db.execute(select(models.Student).where(models.Student.id == r_obj.student_id))
+                referrer = s_res.scalar_one_or_none()
+
+    if not referrer and student.referred_by:
+        ref_result = await db.execute(
+            select(models.Student).where(models.Student.id == student.referred_by)
+        )
+        referrer = ref_result.scalar_one_or_none()
+
+    if referrer:
+        ref_row = await db.execute(
+            select(models.Referral).where(models.Referral.student_id == referrer.id)
+        )
+        ref_entry = ref_row.scalar_one_or_none()
+        if not ref_entry:
+            ref_entry = models.Referral(
+                student_id=referrer.id,
+                code=referrer.referral_code,
+                usage_count=0,
+                reward_amount=0,
+                reward_status="pending",
+            )
+            db.add(ref_entry)
+
+        ref_entry.usage_count += 1
+        # Exactly 10% of payment amount as referral reward (200 DZD on 2000 DZD, 500 DZD on 5000 DZD)
+        reward = int(round(payment.amount * 0.10))
+        ref_entry.reward_amount += reward
+        # Always set status to pending when new reward is added, even if prior earnings were settled
+        ref_entry.reward_status = "pending"
 
     await db.commit()
     await db.refresh(payment)
@@ -382,6 +409,25 @@ async def delete_vendor(
     await db.delete(vendor)
     await db.commit()
     return {"message": "تم حذف التاجر بنجاح"}
+
+
+@router.post("/vendors/{vendor_id}/logo")
+async def upload_vendor_logo(
+    vendor_id: int,
+    file: UploadFile = File(...),
+    admin: models.AdminUser = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(models.Vendor).where(models.Vendor.id == vendor_id))
+    vendor = result.scalar_one_or_none()
+    if not vendor:
+        raise HTTPException(404, detail="التاجر غير موجود")
+    raw = await file.read()
+    compressed, mime = compress_image(raw, file.content_type or "image/jpeg")
+    url = await upload_image(compressed, mime, folder="vendors")
+    vendor.logo_url = url
+    await db.commit()
+    return {"logo_url": url}
 
 
 # ── OFFERS ────────────────────────────────────────────────────
@@ -510,10 +556,40 @@ async def list_referrals(
     )
     out = []
     for r in result.scalars().all():
+        settled = getattr(r, "settled_amount", 0) or 0
+        pending = max(0, r.reward_amount - settled)
+        curr_status = "pending" if pending > 0 else ("settled" if r.reward_amount > 0 else "pending")
         row = schemas.ReferralOut.model_validate(r)
+        row.settled_amount = settled
+        row.pending_amount = pending
+        row.reward_status = curr_status
         row.student_name = r.student.name if r.student else ""
         out.append(row)
     return out
+
+
+@router.post("/referrals/{referral_id}/settle", response_model=schemas.ReferralOut)
+async def settle_referral(
+    referral_id: int,
+    admin: models.AdminUser = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(models.Referral).options(selectinload(models.Referral.student))
+        .where(models.Referral.id == referral_id)
+    )
+    ref = result.scalar_one_or_none()
+    if not ref:
+        raise HTTPException(404, detail="سجل الإحالة غير موجود")
+    ref.settled_amount = ref.reward_amount
+    ref.reward_status = "settled"
+    await db.commit()
+    await db.refresh(ref)
+    row = schemas.ReferralOut.model_validate(ref)
+    row.settled_amount = ref.settled_amount
+    row.pending_amount = 0
+    row.student_name = ref.student.name if ref.student else ""
+    return row
 
 
 # ── SETTINGS ──────────────────────────────────────────────────

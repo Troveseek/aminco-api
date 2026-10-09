@@ -189,6 +189,7 @@ class StudentAdminOut(StudentOut):
 class VendorCreate(BaseModel):
     name: str
     category: str
+    logo_url: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
     description: Optional[str] = None
@@ -209,6 +210,7 @@ class VendorCreate(BaseModel):
 class VendorUpdate(BaseModel):
     name: Optional[str] = None
     category: Optional[str] = None
+    logo_url: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
     description: Optional[str] = None
@@ -222,6 +224,7 @@ class VendorOut(BaseModel):
     id: int
     name: str
     category: str
+    logo_url: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
     description: Optional[str] = None
@@ -231,6 +234,21 @@ class VendorOut(BaseModel):
     active: bool
     created_at: datetime
     offers_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class PublicPartnerOut(BaseModel):
+    id: int
+    name: str
+    category: str
+    logo_url: Optional[str] = None
+    description: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    instagram_url: Optional[str] = None
+    tiktok_url: Optional[str] = None
+    location_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -350,6 +368,8 @@ class ReferralOut(BaseModel):
     code: str
     usage_count: int
     reward_amount: int
+    settled_amount: int = 0
+    pending_amount: int = 0
     reward_status: str
     created_at: datetime
 
@@ -363,6 +383,7 @@ class ReferralOut(BaseModel):
 class SettingOut(BaseModel):
     id: int
     baridimob_account: str
+    ccp_account: Optional[str] = ""
     account_holder: str
     payment_note: Optional[str] = None
     subscription_price: int
@@ -375,9 +396,30 @@ class SettingOut(BaseModel):
 
 class SettingUpdate(BaseModel):
     baridimob_account: Optional[str] = None
+    ccp_account: Optional[str] = None
     account_holder: Optional[str] = None
     payment_note: Optional[str] = None
     subscription_price: Optional[int] = None
+
+
+class PublicSettingOut(BaseModel):
+    baridimob_account: str = "0799 12 34 56"
+    ccp_account: Optional[str] = ""
+    account_holder: str = ""
+    payment_note: Optional[str] = None
+    subscription_price: int = 2000
+
+    model_config = {"from_attributes": True}
+
+
+class ReferralStatsOut(BaseModel):
+    referral_code: str
+    is_ambassador: bool
+    usage_count: int
+    reward_amount: int
+    reward_status: str
+
+    model_config = {"from_attributes": True}
 
 
 # ──────────────────────────────────────────────

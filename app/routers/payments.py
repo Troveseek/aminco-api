@@ -51,13 +51,21 @@ async def upload_receipt(
     compressed, mime = compress_image(raw, file.content_type)
     receipt_url = await upload_image(compressed, mime, folder="receipts")
 
+    # If no referral code passed, check if student was referred by an ambassador
+    ref_code = referral_code.strip() if referral_code and referral_code.strip() else None
+    if not ref_code and student.referred_by:
+        ref_stu = await db.execute(select(models.Student).where(models.Student.id == student.referred_by))
+        r_owner = ref_stu.scalar_one_or_none()
+        if r_owner:
+            ref_code = r_owner.referral_code
+
     # Create payment record
     payment = models.Payment(
         student_id=student.id,
         amount=amount,
         receipt_image_url=receipt_url,
         status="pending",
-        referral_code=referral_code,
+        referral_code=ref_code,
     )
     db.add(payment)
 
@@ -112,12 +120,19 @@ async def submit_cash_payment(
             detail="لديك طلب اشتراك قيد المراجعة بالفعل — يرجى انتظار التحقق أو زيارة المقر"
         )
 
+    ref_code = body.referral_code.strip() if body.referral_code and body.referral_code.strip() else None
+    if not ref_code and student.referred_by:
+        ref_stu = await db.execute(select(models.Student).where(models.Student.id == student.referred_by))
+        r_owner = ref_stu.scalar_one_or_none()
+        if r_owner:
+            ref_code = r_owner.referral_code
+
     payment = models.Payment(
         student_id=student.id,
         amount=body.amount or 2000,
         receipt_image_url="CASH",
         status="pending",
-        referral_code=body.referral_code,
+        referral_code=ref_code,
     )
     db.add(payment)
 
@@ -130,3 +145,20 @@ async def submit_cash_payment(
     out.student_name = student.name
     out.student_phone = student.phone
     return out
+
+
+# ── GET /api/payments/settings ──────────────────────────────
+
+@router.get("/settings", response_model=schemas.PublicSettingOut)
+async def get_payment_settings(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(models.Setting).limit(1))
+    s = result.scalar_one_or_none()
+    if not s:
+        return schemas.PublicSettingOut(
+            baridimob_account="0799 12 34 56",
+            ccp_account="",
+            account_holder="محمد أمين بوكتاشة",
+            payment_note="سيتم تفعيل اشتراكك خلال 24 ساعة من التحقق من وصل الدفع",
+            subscription_price=2000,
+        )
+    return schemas.PublicSettingOut.model_validate(s)

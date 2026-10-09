@@ -39,6 +39,39 @@ app.include_router(verify.router, prefix="/api")
 app.include_router(admin.router)
 app.include_router(categories.router)
 
+from typing import List, Optional
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.database import get_db
+from app import schemas, models
+
+@app.get("/api/settings", response_model=schemas.PublicSettingOut)
+async def get_public_settings(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(models.Setting).limit(1))
+    s = result.scalar_one_or_none()
+    if not s:
+        return schemas.PublicSettingOut(
+            baridimob_account="0799 12 34 56",
+            ccp_account="",
+            account_holder="محمد أمين بوكتاشة",
+            payment_note="سيتم تفعيل اشتراكك خلال 24 ساعة من التحقق من وصل الدفع",
+            subscription_price=2000,
+        )
+    return schemas.PublicSettingOut.model_validate(s)
+
+@app.get("/api/partners", response_model=List[schemas.PublicPartnerOut])
+@app.get("/api/vendors", response_model=List[schemas.PublicPartnerOut])
+async def list_public_partners(
+    category: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(models.Vendor).where(models.Vendor.active == True)
+    if category and category != "الكل":
+        stmt = stmt.where(models.Vendor.category == category)
+    result = await db.execute(stmt.order_by(models.Vendor.name.asc()))
+    return result.scalars().all()
+
 # ── Static files (local uploaded images in dev mode) ─────────
 uploads_dir = Path(__file__).parent.parent / "uploads"
 uploads_dir.mkdir(parents=True, exist_ok=True)
@@ -49,8 +82,6 @@ app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 @app.on_event("startup")
 async def startup():
     # Create all tables if they don't exist
-    # NOTE: In production, use Alembic migrations instead of create_all.
-    # For local dev and initial Supabase setup, create_all is convenient.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # Safe migration for new vendor columns if table already existed
@@ -58,12 +89,27 @@ async def startup():
             ("instagram_url", "VARCHAR(255)"),
             ("tiktok_url", "VARCHAR(255)"),
             ("location_url", "TEXT"),
+            ("logo_url", "TEXT"),
         ]:
             try:
                 from sqlalchemy import text
                 await conn.execute(text(f"ALTER TABLE vendors ADD COLUMN {col} {col_type}"))
             except Exception:
                 pass
+
+        # Safe migration for settings table
+        try:
+            from sqlalchemy import text
+            await conn.execute(text("ALTER TABLE settings ADD COLUMN ccp_account VARCHAR(100)"))
+        except Exception:
+            pass
+
+        # Safe migration for referrals table
+        try:
+            from sqlalchemy import text
+            await conn.execute(text("ALTER TABLE referrals ADD COLUMN settled_amount INTEGER DEFAULT 0"))
+        except Exception:
+            pass
 
     # Ensure the default admin user exists
     from app.database import AsyncSessionLocal

@@ -6,7 +6,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app import models, schemas
 from app.auth import (
@@ -45,16 +45,21 @@ async def register(body: schemas.StudentRegister, db: AsyncSession = Depends(get
     # Check for valid referral code if provided
     referred_by_id = None
     if body.referred_by_code:
-        # Find the referral code owner
+        clean_code = body.referred_by_code.strip()
         ref_owner = await db.execute(
-            select(models.Student).where(models.Student.referral_code == body.referred_by_code.strip())
+            select(models.Student).where(func.lower(func.trim(models.Student.referral_code)) == clean_code.lower())
         )
         owner = ref_owner.scalar_one_or_none()
+        if not owner:
+            ref_match = await db.execute(
+                select(models.Referral).where(func.lower(func.trim(models.Referral.code)) == clean_code.lower())
+            )
+            r_obj = ref_match.scalar_one_or_none()
+            if r_obj:
+                s_res = await db.execute(select(models.Student).where(models.Student.id == r_obj.student_id))
+                owner = s_res.scalar_one_or_none()
         if owner:
             referred_by_id = owner.id
-        else:
-            # Optionally throw an error, but usually we just ignore invalid codes
-            pass
 
     # Create student (referral_code is a placeholder until we have the real id)
     student = models.Student(
@@ -130,6 +135,38 @@ async def forgot_password(phone: str, db: AsyncSession = Depends(get_db)):
 @router.get("/me", response_model=schemas.StudentOut)
 async def get_me(student: models.Student = Depends(get_current_student)):
     return schemas.StudentOut.model_validate(student)
+
+
+# ── GET /api/students/referral-stats ─────────────────────────
+
+@router.get("/referral-stats", response_model=schemas.ReferralStatsOut)
+async def get_referral_stats(
+    student: models.Student = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(models.Referral).where(models.Referral.student_id == student.id)
+    )
+    ref = result.scalar_one_or_none()
+    if not ref:
+        ref = models.Referral(
+            student_id=student.id,
+            code=student.referral_code,
+            usage_count=0,
+            reward_amount=0,
+            reward_status="pending",
+        )
+        db.add(ref)
+        await db.commit()
+        await db.refresh(ref)
+
+    return schemas.ReferralStatsOut(
+        referral_code=student.referral_code,
+        is_ambassador=student.is_ambassador,
+        usage_count=ref.usage_count,
+        reward_amount=ref.reward_amount,
+        reward_status=ref.reward_status,
+    )
 
 
 # ── PATCH /api/students/me ───────────────────────────────────
