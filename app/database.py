@@ -6,7 +6,17 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from typing import AsyncGenerator
 from app.config import DATABASE_URL
 
-is_sqlite = DATABASE_URL.startswith("sqlite")
+# Normalize DATABASE_URL for async SQLAlchemy
+db_url = DATABASE_URL
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+asyncpg://"):
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+if "sslmode=" in db_url:
+    db_url = db_url.replace("sslmode=require", "ssl=require").replace("sslmode=prefer", "ssl=prefer").replace("sslmode=disable", "ssl=disable")
+
+is_sqlite = db_url.startswith("sqlite")
 
 engine_kwargs = {
     "echo": False,
@@ -26,7 +36,7 @@ if not is_sqlite:
 else:
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 
-engine = create_async_engine(DATABASE_URL, **engine_kwargs)
+engine = create_async_engine(db_url, **engine_kwargs)
 
 AsyncSessionLocal = async_sessionmaker(
     engine,

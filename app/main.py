@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from app.config import ADMIN_EMAIL, ADMIN_PASSWORD, APP_BASE_URL
-from app.database import engine
+from app.database import engine, is_sqlite
 from app.models import Base
 from app.routers import students, offers, payments, verify, admin, categories
 
@@ -78,102 +78,125 @@ uploads_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
 
+async def _safe_migrate_column(table_name: str, col_name: str, col_type: str):
+    from sqlalchemy import text
+    try:
+        async with engine.begin() as conn:
+            if is_sqlite:
+                result = await conn.execute(text(f"PRAGMA table_info({table_name})"))
+                existing_cols = [row[1] for row in result.fetchall()]
+                if col_name not in existing_cols:
+                    await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
+            else:
+                # PostgreSQL 9.6+ supports ADD COLUMN IF NOT EXISTS
+                await conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+    except Exception as e:
+        print(f"Migration note for {table_name}.{col_name}: {e}", flush=True)
+
+
 # ── Startup: create tables + ensure admin user exists ─────────
 @app.on_event("startup")
 async def startup():
-    # Create all tables if they don't exist
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # Safe migration for new vendor columns if table already existed
-        for col, col_type in [
-            ("instagram_url", "VARCHAR(255)"),
-            ("tiktok_url", "VARCHAR(255)"),
-            ("location_url", "TEXT"),
-            ("logo_url", "TEXT"),
-        ]:
-            try:
-                from sqlalchemy import text
-                await conn.execute(text(f"ALTER TABLE vendors ADD COLUMN {col} {col_type}"))
-            except Exception:
-                pass
+    print("[INFO] Application starting up...", flush=True)
+    try:
+        # Create all tables if they don't exist
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        print("[OK] Database tables verified/created", flush=True)
+    except Exception as e:
+        print(f"[NOTE] Notice during Base.metadata.create_all: {e}", flush=True)
 
-        # Safe migration for settings table
-        try:
-            from sqlalchemy import text
-            await conn.execute(text("ALTER TABLE settings ADD COLUMN ccp_account VARCHAR(100)"))
-        except Exception:
-            pass
-
-        # Safe migration for referrals table
-        try:
-            from sqlalchemy import text
-            await conn.execute(text("ALTER TABLE referrals ADD COLUMN settled_amount INTEGER DEFAULT 0"))
-        except Exception:
-            pass
+    # Safe migrations for new columns
+    await _safe_migrate_column("vendors", "instagram_url", "VARCHAR(255)")
+    await _safe_migrate_column("vendors", "tiktok_url", "VARCHAR(255)")
+    await _safe_migrate_column("vendors", "location_url", "TEXT")
+    await _safe_migrate_column("vendors", "logo_url", "TEXT")
+    await _safe_migrate_column("settings", "ccp_account", "VARCHAR(100)")
+    await _safe_migrate_column("referrals", "settled_amount", "INTEGER DEFAULT 0")
 
     # Ensure the default admin user exists
     from app.database import AsyncSessionLocal
     from sqlalchemy import select
-    from app.models import AdminUser, Setting
+    from app.models import AdminUser, Setting, Category, University
     from app.auth import hash_password
-    from datetime import datetime
 
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(AdminUser).where(AdminUser.email == ADMIN_EMAIL)
-        )
-        if not result.scalar_one_or_none():
-            session.add(AdminUser(
-                email=ADMIN_EMAIL,
-                password_hash=hash_password(ADMIN_PASSWORD),
-            ))
-            await session.commit()
-            print(f"Admin user created: {ADMIN_EMAIL}")
-        else:
-            print(f"Admin user exists: {ADMIN_EMAIL}")
+    try:
+        async with AsyncSessionLocal() as session:
+            # 1. Admin
+            try:
+                result = await session.execute(
+                    select(AdminUser).where(AdminUser.email == ADMIN_EMAIL)
+                )
+                if not result.scalar_one_or_none():
+                    session.add(AdminUser(
+                        email=ADMIN_EMAIL,
+                        password_hash=hash_password(ADMIN_PASSWORD),
+                    ))
+                    await session.commit()
+                    print(f"[OK] Admin user created: {ADMIN_EMAIL}", flush=True)
+                else:
+                    print(f"[OK] Admin user exists: {ADMIN_EMAIL}", flush=True)
+            except Exception as e:
+                print(f"[NOTE] Admin seed note: {e}", flush=True)
+                await session.rollback()
 
-        # Ensure settings row exists
-        s_result = await session.execute(select(Setting).limit(1))
-        if not s_result.scalar_one_or_none():
-            session.add(Setting(
-                baridimob_account="0799 12 34 56",
-                account_holder="محمد أمين بوكتاشة",
-                payment_note="سيتم تفعيل اشتراكك خلال 24 ساعة من التحقق من الدفع",
-                subscription_price=1000,
-                admin_email=ADMIN_EMAIL,
-                app_version="1.0.0",
-            ))
-            await session.commit()
-            print("✅ Default settings created")
+            # 2. Settings
+            try:
+                s_result = await session.execute(select(Setting).limit(1))
+                if not s_result.scalar_one_or_none():
+                    session.add(Setting(
+                        baridimob_account="0799 12 34 56",
+                        account_holder="محمد أمين بوكتاشة",
+                        payment_note="سيتم تفعيل اشتراكك خلال 24 ساعة من التحقق من الدفع",
+                        subscription_price=1000,
+                        admin_email=ADMIN_EMAIL,
+                        app_version="1.0.0",
+                    ))
+                    await session.commit()
+                    print("[OK] Default settings created", flush=True)
+            except Exception as e:
+                print(f"[NOTE] Settings seed note: {e}", flush=True)
+                await session.rollback()
 
-        # Seed categories
-        from app.models import Category
-        cat_result = await session.execute(select(Category).limit(1))
-        if not cat_result.scalar_one_or_none():
-            default_cats = [
-                Category(label='مطاعم وكافيهات', icon='restaurant'),
-                Category(label='رياضة', icon='fitness_center'),
-                Category(label='تعليم ومكتبات', icon='menu_book'),
-                Category(label='خدمات', icon='medical_services'),
-                Category(label='ترفيه', icon='local_activity')
-            ]
-            session.add_all(default_cats)
-            await session.commit()
-            print("✅ Default categories created")
+            # 3. Categories
+            try:
+                cat_result = await session.execute(select(Category).limit(1))
+                if not cat_result.scalar_one_or_none():
+                    default_cats = [
+                        Category(label='مطاعم وكافيهات', icon='restaurant'),
+                        Category(label='رياضة', icon='fitness_center'),
+                        Category(label='تعليم ومكتبات', icon='menu_book'),
+                        Category(label='خدمات', icon='medical_services'),
+                        Category(label='ترفيه', icon='local_activity')
+                    ]
+                    session.add_all(default_cats)
+                    await session.commit()
+                    print("[OK] Default categories created", flush=True)
+            except Exception as e:
+                print(f"[NOTE] Categories seed note: {e}", flush=True)
+                await session.rollback()
 
-        # Seed universities
-        from app.models import University
-        uni_result = await session.execute(select(University).limit(1))
-        if not uni_result.scalar_one_or_none():
-            default_unis = [
-                University(name="جامعة فرحات عباس - سطيف 1"),
-                University(name="جامعة محمد لمين دباغين - سطيف 2"),
-                University(name="الجامعة المركزية"),
-                University(name="المدرسة العليا للأساتذة")
-            ]
-            session.add_all(default_unis)
-            await session.commit()
-            print("✅ Default universities created in database")
+            # 4. Universities
+            try:
+                uni_result = await session.execute(select(University).limit(1))
+                if not uni_result.scalar_one_or_none():
+                    default_unis = [
+                        University(name="جامعة فرحات عباس - سطيف 1"),
+                        University(name="جامعة محمد لمين دباغين - سطيف 2"),
+                        University(name="الجامعة المركزية"),
+                        University(name="المدرسة العليا للأساتذة")
+                    ]
+                    session.add_all(default_unis)
+                    await session.commit()
+                    print("[OK] Default universities created in database", flush=True)
+            except Exception as e:
+                print(f"[NOTE] Universities seed note: {e}", flush=True)
+                await session.rollback()
+
+    except Exception as e:
+        print(f"[NOTE] Notice during startup session: {e}", flush=True)
+
+    print("[SUCCESS] Application startup finished successfully!", flush=True)
 
 
 # ── Health check ─────────────────────────────────────────────
